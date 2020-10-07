@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -506,10 +507,24 @@ impl RaftStorage<ClientRequest, ClientResponse> for RaftStore {
         let new_db = Db::open_or_create(new_db_path, db_opt)?;
         let old_db = self.store.db.swap(Arc::new(new_db));
 
-        if let Err(_) = Arc::try_unwrap(old_db).map(|db| db.close()) {
-            panic!("can't unwrap arc");
-        }
-
+        std::thread::spawn(|| {
+            match Arc::try_unwrap(old_db) {
+                Ok(db) => {
+                    let _ = db.env.write_txn().map(|txn| { let _ = txn.abort(); });
+                    while db.env.reader_list().len() > 1 {
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                    // The call to close is safe, because we took ownership on the env, and waited
+                    // for all txn to terminate, no subsequent operation can occur on the
+                    // environement.
+                    unsafe { db.env.close() };
+                    info!("closed environement");
+                }
+                Err(_) => {
+                    panic!("can't get db");
+                }
+            }
+        });
         txn.commit()?;
 
         Ok(())

@@ -34,7 +34,7 @@ pub struct MainT;
 pub struct UpdateT;
 
 pub struct Database {
-    env: heed::Env,
+    pub env: heed::Env,
     update_env: heed::Env,
     common_store: heed::PolyDatabase,
     indexes_store: heed::Database<Str, Unit>,
@@ -317,10 +317,6 @@ impl Database {
             update_fn,
             database_version,
         })
-    }
-
-    pub fn close(self) {
-        self.env.reader_list();
     }
 
     pub fn open_index(&self, name: impl AsRef<str>) -> Option<Index> {
